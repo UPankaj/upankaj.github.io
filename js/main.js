@@ -1,6 +1,24 @@
 (function () {
   var cfg = window.SITE_CONFIG || {};
 
+  /* ---------- Logos: path from config.logos[key], else assets/logos/<key>.(png|svg|webp|jpg) ---------- */
+  var EXT = ['png', 'svg', 'webp', 'jpg'];
+  window.logoFail = function (img) {
+    var n = (+img.dataset.n || 0) + 1;
+    if (!img.dataset.fixed && n < EXT.length) { img.dataset.n = n; img.src = 'assets/logos/' + img.dataset.logo + '.' + EXT[n]; }
+    else img.remove();   /* nothing found: the fallback icon stays */
+  };
+  window.logoOk = function (img) {
+    var ic = img.parentNode.querySelector('.ic');
+    if (ic) ic.style.display = 'none';   /* real logo loaded: drop the fallback icon so they never overlap */
+  };
+  document.querySelectorAll('img[data-logo]').forEach(function (img) {
+    var custom = (cfg.logos || {})[img.dataset.logo];
+    if (custom) img.dataset.fixed = '1';
+    img.src = custom || 'assets/logos/' + img.dataset.logo + '.png';
+    if (img.complete && img.naturalWidth) window.logoOk(img);
+  });
+
   /* ---------- Configurable links ---------- */
   function setLink(el, href) {
     if (!href) { el.hidden = true; return; }
@@ -13,6 +31,7 @@
     if (k === 'github') setLink(el, gh);
     else if (k === 'email') setLink(el, cfg.email ? 'mailto:' + cfg.email : '');
     else if (k === 'linkedin') setLink(el, cfg.linkedin);
+    else if (k === 'leetcode') setLink(el, cfg.leetcodeUser ? 'https://leetcode.com/u/' + cfg.leetcodeUser + '/' : '');
     else if (k === 'resume') setLink(el, cfg.resume);
   });
   document.querySelectorAll('[data-repo]').forEach(function (el) {
@@ -133,6 +152,54 @@
     sortBtn.setAttribute('aria-pressed', String(oldestFirst));
     sortLabel.textContent = oldestFirst ? 'Oldest first' : 'Newest first';
   });
+
+  /* ---------- "Show more" toggles (achievements, projects) ---------- */
+  function bindMore(listId, btnId, sectionId, noun, countSel) {
+    var l = document.getElementById(listId), b = document.getElementById(btnId);
+    if (!l || !b) return;
+    var total = document.querySelectorAll(countSel).length;
+    function paint() {
+      var collapsed = l.classList.contains('collapsed');
+      b.textContent = collapsed ? 'Show all ' + total + ' ' + noun : 'Show fewer';
+      b.setAttribute('aria-expanded', String(!collapsed));
+    }
+    paint();
+    b.addEventListener('click', function () {
+      l.classList.toggle('collapsed');
+      paint();
+      if (l.classList.contains('collapsed')) document.getElementById(sectionId).scrollIntoView();
+    });
+  }
+  bindMore('awardList', 'moreAwards', 'achievements', 'achievements', '#awardList > div');
+  bindMore('vitList', 'moreProjects', 'projects', 'projects', '#projects article.project');
+
+  /* ---------- Back to top ---------- */
+  var top = document.getElementById('toTop');
+  if (top) {
+    top.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); });
+    var toggleTop = function () { top.hidden = window.scrollY < 500; };
+    addEventListener('scroll', toggleTop, { passive: true });
+    toggleTop();
+  }
+
+  /* ---------- Contact is short, so scrollspy never reaches it: highlight it at the page bottom ---------- */
+  var links = document.querySelectorAll('#nav .nav-link');
+  var contactLink = document.querySelector('#nav a[href="#contact"]');
+  var chosen = null;   /* item just clicked: wins until the visitor scrolls by hand */
+  function mark(target) { links.forEach(function (l) { l.classList.toggle('active', l === target); }); }
+  function sync() {
+    if (chosen) return mark(chosen);
+    if (contactLink && innerHeight + scrollY >= document.documentElement.scrollHeight - 4) mark(contactLink);
+  }
+  links.forEach(function (l) {
+    l.addEventListener('click', function () { chosen = l; mark(l); });
+  });
+  ['wheel', 'touchstart', 'keydown'].forEach(function (ev) {
+    addEventListener(ev, function () { chosen = null; }, { passive: true });
+  });
+  addEventListener('scroll', sync, { passive: true });
+  document.addEventListener('activate.bs.scrollspy', function () { requestAnimationFrame(sync); });
+  sync();
 
   /* ---------- Footer year ---------- */
   var y = document.getElementById('year');
