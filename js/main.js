@@ -1,22 +1,41 @@
 (function () {
   var cfg = window.SITE_CONFIG || {};
 
-  /* ---------- Logos: path from config.logos[key], else assets/logos/<key>.(png|svg|webp|jpg) ---------- */
+  /* ---------- Logos: config.logos[key], else assets/logos/<key>.(png|svg|webp|jpg) ----------
+     All file types are tried at once (not one after another) and the one that worked is remembered. */
   var EXT = ['png', 'svg', 'webp', 'jpg'];
-  window.logoFail = function (img) {
-    var n = (+img.dataset.n || 0) + 1;
-    if (!img.dataset.fixed && n < EXT.length) { img.dataset.n = n; img.src = 'assets/logos/' + img.dataset.logo + '.' + EXT[n]; }
-    else img.remove();   /* nothing found: the fallback icon stays */
-  };
-  window.logoOk = function (img) {
+  function remember(key, path) { try { path ? localStorage.setItem('logo:' + key, path) : localStorage.removeItem('logo:' + key); } catch (e) {} }
+  function show(img, path) {
+    img.src = path;
     var ic = img.parentNode.querySelector('.ic');
-    if (ic) ic.style.display = 'none';   /* real logo loaded: drop the fallback icon so they never overlap */
-  };
+    if (ic) ic.style.display = 'none';   /* real logo found: drop the fallback icon so they never overlap */
+  }
+  function probe(img, paths, key) {
+    var ok = [], settled = 0, done = false;
+    paths.forEach(function (p, i) {
+      var t = new Image();
+      function end(good) {
+        ok[i] = good; settled++;
+        if (done) return;
+        for (var n = 0; n < paths.length; n++) {   /* take the best choice once every better one has failed */
+          if (ok[n] === undefined) return;
+          if (ok[n]) { done = true; remember(key, paths[n]); return show(img, paths[n]); }
+        }
+        done = true; remember(key, ''); img.remove();   /* nothing found: the fallback icon stays */
+      }
+      t.onload = function () { end(true); };
+      t.onerror = function () { end(false); };
+      t.src = p;
+    });
+  }
   document.querySelectorAll('img[data-logo]').forEach(function (img) {
-    var custom = (cfg.logos || {})[img.dataset.logo];
-    if (custom) img.dataset.fixed = '1';
-    img.src = custom || 'assets/logos/' + img.dataset.logo + '.png';
-    if (img.complete && img.naturalWidth) window.logoOk(img);
+    var key = img.dataset.logo, custom = (cfg.logos || {})[key], saved = '';
+    try { saved = localStorage.getItem('logo:' + key) || ''; } catch (e) {}
+    var all = custom ? [custom] : EXT.map(function (x) { return 'assets/logos/' + key + '.' + x; });
+    if (saved && all.indexOf(saved) > -1) {   /* repeat visit: use the known file straight away */
+      img.onerror = function () { img.onerror = null; probe(img, all, key); };
+      show(img, saved);
+    } else probe(img, all, key);
   });
 
   /* ---------- Configurable links ---------- */
